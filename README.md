@@ -7,7 +7,7 @@ A fast, standalone host security auditing and behavioral intrusion detection CLI
 ---
 
 ```text
-secscan 1.1.0  |  myhost  |  CachyOS Linux  |  kernel 7.3.3-1-cachyos
+secscan 1.0.1  |  myhost  |  CachyOS Linux  |  kernel 7.3.3-1-cachyos
 Scanned 2026-11-12 12:29:23 in 59.7s
 
 Security score: Grade B  (84/100)   coverage: 29/29 checks ran
@@ -54,7 +54,7 @@ ACTION PLAN: THIS WEEK (medium)
 
 2. **Action-Oriented Reports**:
    - Categorizes every finding into an exact action plan: **Do Now** (Critical/High), **This Week** (Medium), and **When Convenient** (Low).
-   - Every finding provides the root cause (*"why"*) and a drop-in shell command (*"fix"*).
+   - Every finding provides the root cause (_"why"_) and a drop-in shell command (_"fix"_).
 
 3. **Honest Scoring & No False All-Clears**:
    - Scores report actual test coverage (e.g., `29/29 checks ran`).
@@ -77,11 +77,9 @@ ACTION PLAN: THIS WEEK (medium)
 git clone https://github.com/yourusername/SecurityGoScaner.git secscan
 cd secscan
 
-# Build the binary
-go build -o secscan .
-
-# Install to system PATH
-sudo install -m755 secscan /usr/local/bin/secscan
+# One-command build and install (runs tests, builds, and installs):
+make install
+# (or run: ./publish.sh)
 
 # Verify installation
 secscan --version
@@ -89,13 +87,28 @@ secscan --version
 
 ### 2. Run Your First Scan
 
+#### Audit Your Host PC:
 Run with `sudo` for full access to inspect root processes, listening sockets, and security modules:
-
 ```bash
 sudo secscan
 ```
 
+#### Scan Untrusted Repositories & Zip Archives (`code-scan`):
+Before running, building, or opening an untrusted project or download:
+```bash
+# Scan a project folder (runs inside isolated, network-less Docker by default)
+secscan code-scan ~/Downloads/untrusted-repo
+
+# Scan a ZIP archive directly WITHOUT unzipping to your host disk:
+secscan code-scan ~/Downloads/suspicious-project.zip
+
+# Fast native in-memory scan (without Docker):
+secscan code-scan --no-docker ~/Downloads/untrusted-repo
+secscan code-scan --no-docker ~/Downloads/archive.zip
+```
+
 View your saved report anytime in Markdown format:
+
 ```bash
 glow ~/.local/share/secscan/report-*.md   # or open with your favorite editor
 ```
@@ -108,17 +121,19 @@ glow ~/.local/share/secscan/report-*.md   # or open with your favorite editor
 - **Build tool**: Go 1.21+
 
 ### Optional Companion Tools
+
 `secscan` works out of the box using Linux system APIs. If companion security tools are installed, it automatically orchestrates and parses them. Missing tools are cleanly skipped with helpful hints:
 
-| Tool | Arch / CachyOS Package | What It Adds |
-| :--- | :--- | :--- |
-| `checkupdates` | `pacman-contrib` | Safe checking of pending security updates |
-| `arch-audit` | `arch-audit` | Real-time CVE database matching |
-| `rkhunter` | `rkhunter` | Rootkit detection (pre-filtered for Arch false alarms) |
-| `lynis` | `lynis` | In-depth system configuration and hardening audit |
-| `clamscan` | `clamav` | Antivirus signature scanning (optional via `--clamav` or `--full`) |
+| Tool           | Arch / CachyOS Package | What It Adds                                                       |
+| :------------- | :--------------------- | :----------------------------------------------------------------- |
+| `checkupdates` | `pacman-contrib`       | Safe checking of pending security updates                          |
+| `arch-audit`   | `arch-audit`           | Real-time CVE database matching                                    |
+| `rkhunter`     | `rkhunter`             | Rootkit detection (pre-filtered for Arch false alarms)             |
+| `lynis`        | `lynis`                | In-depth system configuration and hardening audit                  |
+| `clamscan`     | `clamav`               | Antivirus signature scanning (optional via `--clamav` or `--full`) |
 
 To install all recommended tools on Arch / CachyOS:
+
 ```bash
 sudo pacman -S --needed go pacman-contrib arch-audit rkhunter lynis clamav
 ```
@@ -127,11 +142,11 @@ sudo pacman -S --needed go pacman-contrib arch-audit rkhunter lynis clamav
 
 ## Daily & Weekly Routine
 
-| When | Command | Estimated Time | What It Does |
-| :--- | :--- | :--- | :--- |
-| **Daily / Pre-Commit** | `sudo secscan --quick` | **~2–4 seconds** | Runs fast checks: persistence, active processes, ports, logins, CVEs, malware IOCs. |
-| **Weekly** | `sudo secscan` | **~1 minute** | Daily checks + rootkit audit (`rkhunter`) + package integrity (`pacman -Qkk`) + Lynis. |
-| **Monthly / Deep Audit** | `sudo secscan --full` | **10–30 minutes** | Everything above + comprehensive ClamAV file system signature scan. |
+| When                     | Command                | Estimated Time    | What It Does                                                                           |
+| :----------------------- | :--------------------- | :---------------- | :------------------------------------------------------------------------------------- |
+| **Daily / Pre-Commit**   | `sudo secscan --quick` | **~2–4 seconds**  | Runs fast checks: persistence, active processes, ports, logins, CVEs, malware IOCs.    |
+| **Weekly**               | `sudo secscan`         | **~1 minute**     | Daily checks + rootkit audit (`rkhunter`) + package integrity (`pacman -Qkk`) + Lynis. |
+| **Monthly / Deep Audit** | `sudo secscan --full`  | **10–30 minutes** | Everything above + comprehensive ClamAV file system signature scan.                    |
 
 ---
 
@@ -165,25 +180,25 @@ sudo secscan --fail-on high
 
 ### Full Options
 
-| Flag | Default | Description |
-| :--- | :--- | :--- |
-| `--quick` | `false` | Skips slow checks (`integrity`, `fs-suid`, `rkhunter`, `lynis`, `kmod`, `clamav`). |
-| `--full` | `false` | Enables every check including `clamav`. |
-| `--clamav` | `false` | Enables ClamAV file scanning without forcing other checks. |
-| `--clamav-paths` | `$HOME, /tmp, /opt, /usr/local, /srv` | Comma-separated directories scanned by ClamAV. |
-| `--clamav-timeout` | `2h` | Maximum execution time allowed for ClamAV. |
-| `--only <ids>` | `""` | Comma-separated list of check IDs to run exclusively. |
-| `--skip <ids>` | `""` | Comma-separated list of check IDs to skip. |
-| `--jobs <n>` | `4` | Number of parallel worker threads. |
-| `--json` | `false` | Emits report to stdout in JSON format (progress logs go to stderr). |
-| `-v` | `false` | Verbose mode: prints all evidence lines without truncation. |
-| `--show-suppressed` | `false` | Lists findings that were silenced by your config file. |
-| `--no-color` | `false` | Disables ANSI terminal colors (automatically disabled when piped). |
-| `--no-save` | `false` | Runs scan in-memory without saving report files or moving baseline. |
-| `--out <dir>` | `~/.local/share/secscan` | Custom directory to save reports and baseline. |
-| `--config <path>` | `~/.config/secscan/config.json` | Custom path to configuration file. |
-| `--init-config` | `false` | Generates a starter `config.json` and exits. |
-| `--fail-on <level>`| `high` | Exits with status `1` if an unsuppressed finding is at or above: `info`, `low`, `medium`, `high`, `critical`. |
+| Flag                | Default                               | Description                                                                                                   |
+| :------------------ | :------------------------------------ | :------------------------------------------------------------------------------------------------------------ |
+| `--quick`           | `false`                               | Skips slow checks (`integrity`, `fs-suid`, `rkhunter`, `lynis`, `kmod`, `clamav`).                            |
+| `--full`            | `false`                               | Enables every check including `clamav`.                                                                       |
+| `--clamav`          | `false`                               | Enables ClamAV file scanning without forcing other checks.                                                    |
+| `--clamav-paths`    | `$HOME, /tmp, /opt, /usr/local, /srv` | Comma-separated directories scanned by ClamAV.                                                                |
+| `--clamav-timeout`  | `2h`                                  | Maximum execution time allowed for ClamAV.                                                                    |
+| `--only <ids>`      | `""`                                  | Comma-separated list of check IDs to run exclusively.                                                         |
+| `--skip <ids>`      | `""`                                  | Comma-separated list of check IDs to skip.                                                                    |
+| `--jobs <n>`        | `4`                                   | Number of parallel worker threads.                                                                            |
+| `--json`            | `false`                               | Emits report to stdout in JSON format (progress logs go to stderr).                                           |
+| `-v`                | `false`                               | Verbose mode: prints all evidence lines without truncation.                                                   |
+| `--show-suppressed` | `false`                               | Lists findings that were silenced by your config file.                                                        |
+| `--no-color`        | `false`                               | Disables ANSI terminal colors (automatically disabled when piped).                                            |
+| `--no-save`         | `false`                               | Runs scan in-memory without saving report files or moving baseline.                                           |
+| `--out <dir>`       | `~/.local/share/secscan`              | Custom directory to save reports and baseline.                                                                |
+| `--config <path>`   | `~/.config/secscan/config.json`       | Custom path to configuration file.                                                                            |
+| `--init-config`     | `false`                               | Generates a starter `config.json` and exits.                                                                  |
+| `--fail-on <level>` | `high`                                | Exits with status `1` if an unsuppressed finding is at or above: `info`, `low`, `medium`, `high`, `critical`. |
 
 ### Exit Codes
 
@@ -191,6 +206,45 @@ sudo secscan --fail-on high
 - `1`: Security findings detected at or above `--fail-on` threshold.
 - `2`: Bad configuration or invalid command-line flags.
 - `3`: Execution error; one or more checks failed (e.g. tool crashed or network failed).
+
+---
+
+## Codebase & Project Malware Scanner (`secscan code-scan`)
+
+Protect your PC **before** running, building, or installing untrusted code from GitHub, recruiters, freelance clients, or downloaded archives.
+
+```bash
+secscan code-scan [flags] <target-directory | archive.zip>
+```
+
+### Safety Features
+- **Docker by Default**: The codebase is mounted read-only (`:ro`) into a locked-down, disposable container with `--network none`, `--cap-drop ALL`, `--security-opt no-new-privileges`, and read-only root filesystem. The container is completely deleted when finished.
+- **Zip Scanning Without Extracting**: You can pass a `.zip` archive directly. It is read completely in-memory without ever unzipping or extracting malicious files onto your host disk!
+- **Zero Execution**: Target files are never executed, imported, or compiled. No `npm install`, `pip install`, `go run`, or build scripts are triggered.
+- **Native Fast Mode (`--no-docker`)**: If Docker is not installed or you want instant in-memory scanning, `--no-docker` runs Go's safe static analyzer directly in memory in milliseconds.
+
+### Code-Scan Flags
+
+| Flag | Default | Description |
+| :--- | :--- | :--- |
+| `<target>` | *(required)* | Path to project directory or `.zip` archive. |
+| `--password <pass>` | `""` | Password for encrypted/locked ZIP archives (prompts interactively if omitted). |
+| `--no-docker` | `false` | Run native in-memory scan directly on host without Docker. |
+| `--min-severity` | `info` | Minimum severity to report: `info`, `low`, `medium`, `high`, `critical`. |
+| `--json` | `false` | Output findings in machine-readable JSON format. |
+| `--out <path>` | `""` | Save Markdown report or JSON file outside the target. |
+| `-v` | `false` | Verbose output mode. |
+
+### What `code-scan` Hunts:
+- **Reverse Shells**: `/dev/tcp`, `bash -i`, Netcat relays, PowerShell TCPClient, Python/Node socket-to-shell wiring.
+- **Crypto Clipboard Address Hijackers**: Detects detect-and-replace loops swapping Bitcoin/Ethereum/Solana addresses.
+- **Rootkits & Hooks**: References to `/etc/ld.so.preload`, `LD_PRELOAD`, `sys_call_table`, eBPF rootkits, PAM backdoors.
+- **Persistence Injection**: Secret writes to `~/.ssh/authorized_keys`, crontabs, `.bashrc`, disguised systemd units.
+- **Obfuscated Loaders**: `eval(atob(...))`, `exec(base64)`, `curl | sh`, PowerShell encoded commands.
+- **Credential Exfiltration**: Discord/Telegram webhooks, MetaMask/wallet files, browser credential stores (`Login Data`).
+- **Supply Chain Threats**: Dangerous `package.json` install hooks (`preinstall`, `postinstall`).
+- **Trojan Source & Obfuscation**: Bidirectional Unicode characters (`\u202E`), double-extension files (`.pdf.exe`).
+- **Hidden Compiled Binaries**: Embedded ELF, PE, Mach-O binaries (`.so`, `.dll`, `.exe`).
 
 ---
 
@@ -218,6 +272,7 @@ $$\text{Score} = 100 - (30 \times \text{Critical}) - (12 \times \text{High}) - (
 ### Action Plan (Do Now / This Week / Later)
 
 Every terminal scan and Markdown report automatically structures findings into an immediate roadmap:
+
 1. **DO NOW (Critical / High)**: Isolate or neutralize immediately.
 2. **THIS WEEK (Medium)**: Apply package upgrades, bind ports to localhost, or fix service configs.
 3. **WHEN CONVENIENT (Low)**: Apply kernel sysctl hardening or firmware adjustments.
@@ -237,47 +292,49 @@ Each finding is assigned a unique cryptographic fingerprint based on its identit
 
 `secscan` runs up to **29 layered checks**:
 
-| Check ID | Category | What It Inspects | Key Findings |
-| :--- | :--- | :--- | :--- |
-| `patch-updates` | Patching | Pending system updates via `checkupdates` | `PATCH-PENDING` |
-| `patch-reboot` | Patching | Kernel mismatch with disk modules (reboot required) | `PATCH-REBOOT` |
-| `cve-audit` | Patching | Known vulnerabilities via `arch-audit` | `CVE-FIXABLE`, `CVE-UNFIXED` |
-| `integrity` | Integrity | Modified system binaries in `/usr/bin`, `/usr/lib`, `/boot` | `INTEG-MODIFIED`, `INTEG-METADATA` |
-| `foreign-pkgs` | Integrity | AUR and untracked manual packages (`pacman -Qm`) | `PKG-FOREIGN` |
-| `ld-preload` | Integrity | Malicious `/etc/ld.so.preload` rootkit injection | `INTEG-LDPRELOAD` |
-| `kmod` | Integrity | Loaded kernel modules not owned by any package | `KMOD-UNOWNED`, `KMOD-DKMS` |
-| `secureboot` | Hardening | UEFI Secure Boot enforcement status | `BOOT-SECUREBOOT` |
-| `sysctl` | Hardening | Kernel hardening parameters (bpf, ptracing, dumpable) | `HARD-SYSCTL` |
-| `lynis` | Hardening | Full system audit via `lynis` | `LYNIS-WARN`, `LYNIS-SUGGEST` |
-| `net-listen` | Network | Ports open and listening on external interfaces | `NET-LISTEN-<proto>-<port>` |
-| `net-docker` | Network | Containers bypassing firewall by publishing to `0.0.0.0` | `NET-DOCKER-EXPOSED` |
-| `net-firewall` | Network | Status of `ufw`, `nftables`, or `firewalld` | `NET-FIREWALL` |
-| `net-outbound` | Network | Connections made by temp-dir binaries, hidden scripts, or stale apps | `NET-OUTBOUND-SUSPICIOUS`, `NET-OUTBOUND-STALE`, `NET-OUTBOUND-UNPACKAGED` |
-| `accounts` | Access | Unauthorized UID 0 users, empty passwords, sudo `NOPASSWD` | `ACCT-UID0`, `ACCT-SHADOW-PERMS`, `ACCT-EMPTY-PW`, `ACCT-SUDO-NOPASSWD` |
-| `ssh` | Access | Insecure SSH settings (`PermitRootLogin`) & `authorized_keys` | `SSH-RUNNING`, `SSH-AUTHKEYS` |
-| `logins` | Access | Remote network logins and brute-force attempts | `AUTH-REMOTE-LOGIN`, `AUTH-FAILED` |
-| `persist-systemd`| Persistence | Unpackaged systemd units, **disguised system names**, stealth logging | `PERSIST-UNIT-DISGUISED`, `PERSIST-UNIT-SUSPICIOUS`, `PERSIST-UNIT-CUSTOM` |
-| `persist-cron` | Persistence | Scheduled jobs in `/etc/cron*` and user crontabs | `PERSIST-CRON-SUSPICIOUS`, `PERSIST-CRON` |
-| `persist-autostart`| Persistence| Desktop `.desktop` entries in user & system autostart | `PERSIST-AUTOSTART-SUSPICIOUS`, `PERSIST-AUTOSTART` |
-| `persist-shellrc` | Persistence | Malicious reverse-shells or downloads in `.bashrc`, `.zshrc` | `PERSIST-SHELLRC` |
-| `persist-misc` | Persistence | Startup scripts in `profile.d`, `udev`, `environment.d`, `~/.local/bin` | `PERSIST-MISC-SUSPICIOUS`, `PERSIST-MISC` |
-| `ioc-scripts` | Malware | Files matching **clipboard hijackers** or known malware signatures | `MAL-CLIPBOARD-HIJACK` |
-| `rkhunter` | Malware | Rootkit heuristics via `rkhunter` | `RKH-ROOTKIT`, `RKH-WARN` |
-| `clamav` | Malware | Deep signature file scan via `clamscan` | `AV-FOUND`, `AV-LIKELY-FP` |
-| `procs` | Runtime | Cryptominers (`xmrig`), deleted executables, `/tmp` processes | `PROC-MINER`, `PROC-TMP-EXEC`, `PROC-DELETED-BIN` |
-| `proc-scripts` | Runtime | Interpreters (`node`, `python`, `sh`) running hidden scripts | `PROC-MALICIOUS-SCRIPT`, `PROC-HIDDEN-SCRIPT` |
-| `proc-hidden` | Runtime | Hidden PIDs responding to signals but missing from `/proc` | `PROC-HIDDEN-PID` |
-| `fs-suid` | Filesystem | Dangerous unowned SUID/SGID privilege escalation binaries | `FS-SUID-UNOWNED` |
-| `fs-tmp` | Filesystem | Executables and ELF binaries staged in `/tmp`, `/dev/shm` | `FS-TMP-ELF`, `FS-TMP-EXEC` |
+| Check ID            | Category    | What It Inspects                                                        | Key Findings                                                               |
+| :------------------ | :---------- | :---------------------------------------------------------------------- | :------------------------------------------------------------------------- |
+| `patch-updates`     | Patching    | Pending system updates via `checkupdates`                               | `PATCH-PENDING`                                                            |
+| `patch-reboot`      | Patching    | Kernel mismatch with disk modules (reboot required)                     | `PATCH-REBOOT`                                                             |
+| `cve-audit`         | Patching    | Known vulnerabilities via `arch-audit`                                  | `CVE-FIXABLE`, `CVE-UNFIXED`                                               |
+| `integrity`         | Integrity   | Modified system binaries in `/usr/bin`, `/usr/lib`, `/boot`             | `INTEG-MODIFIED`, `INTEG-METADATA`                                         |
+| `foreign-pkgs`      | Integrity   | AUR and untracked manual packages (`pacman -Qm`)                        | `PKG-FOREIGN`                                                              |
+| `ld-preload`        | Integrity   | Malicious `/etc/ld.so.preload` rootkit injection                        | `INTEG-LDPRELOAD`                                                          |
+| `kmod`              | Integrity   | Loaded kernel modules not owned by any package                          | `KMOD-UNOWNED`, `KMOD-DKMS`                                                |
+| `secureboot`        | Hardening   | UEFI Secure Boot enforcement status                                     | `BOOT-SECUREBOOT`                                                          |
+| `sysctl`            | Hardening   | Kernel hardening parameters (bpf, ptracing, dumpable)                   | `HARD-SYSCTL`                                                              |
+| `lynis`             | Hardening   | Full system audit via `lynis`                                           | `LYNIS-WARN`, `LYNIS-SUGGEST`                                              |
+| `net-listen`        | Network     | Ports open and listening on external interfaces                         | `NET-LISTEN-<proto>-<port>`                                                |
+| `net-docker`        | Network     | Containers bypassing firewall by publishing to `0.0.0.0`                | `NET-DOCKER-EXPOSED`                                                       |
+| `net-firewall`      | Network     | Status of `ufw`, `nftables`, or `firewalld`                             | `NET-FIREWALL`                                                             |
+| `net-outbound`      | Network     | Connections made by temp-dir binaries, hidden scripts, or stale apps    | `NET-OUTBOUND-SUSPICIOUS`, `NET-OUTBOUND-STALE`, `NET-OUTBOUND-UNPACKAGED` |
+| `accounts`          | Access      | Unauthorized UID 0 users, empty passwords, sudo `NOPASSWD`              | `ACCT-UID0`, `ACCT-SHADOW-PERMS`, `ACCT-EMPTY-PW`, `ACCT-SUDO-NOPASSWD`    |
+| `ssh`               | Access      | Insecure SSH settings (`PermitRootLogin`) & `authorized_keys`           | `SSH-RUNNING`, `SSH-AUTHKEYS`                                              |
+| `logins`            | Access      | Remote network logins and brute-force attempts                          | `AUTH-REMOTE-LOGIN`, `AUTH-FAILED`                                         |
+| `persist-systemd`   | Persistence | Unpackaged systemd units, **disguised system names**, stealth logging   | `PERSIST-UNIT-DISGUISED`, `PERSIST-UNIT-SUSPICIOUS`, `PERSIST-UNIT-CUSTOM` |
+| `persist-cron`      | Persistence | Scheduled jobs in `/etc/cron*` and user crontabs                        | `PERSIST-CRON-SUSPICIOUS`, `PERSIST-CRON`                                  |
+| `persist-autostart` | Persistence | Desktop `.desktop` entries in user & system autostart                   | `PERSIST-AUTOSTART-SUSPICIOUS`, `PERSIST-AUTOSTART`                        |
+| `persist-shellrc`   | Persistence | Malicious reverse-shells or downloads in `.bashrc`, `.zshrc`            | `PERSIST-SHELLRC`                                                          |
+| `persist-misc`      | Persistence | Startup scripts in `profile.d`, `udev`, `environment.d`, `~/.local/bin` | `PERSIST-MISC-SUSPICIOUS`, `PERSIST-MISC`                                  |
+| `ioc-scripts`       | Malware     | Files matching **clipboard hijackers** or known malware signatures      | `MAL-CLIPBOARD-HIJACK`                                                     |
+| `rkhunter`          | Malware     | Rootkit heuristics via `rkhunter`                                       | `RKH-ROOTKIT`, `RKH-WARN`                                                  |
+| `clamav`            | Malware     | Deep signature file scan via `clamscan`                                 | `AV-FOUND`, `AV-LIKELY-FP`                                                 |
+| `procs`             | Runtime     | Cryptominers (`xmrig`), deleted executables, `/tmp` processes           | `PROC-MINER`, `PROC-TMP-EXEC`, `PROC-DELETED-BIN`                          |
+| `proc-scripts`      | Runtime     | Interpreters (`node`, `python`, `sh`) running hidden scripts            | `PROC-MALICIOUS-SCRIPT`, `PROC-HIDDEN-SCRIPT`                              |
+| `proc-hidden`       | Runtime     | Hidden PIDs responding to signals but missing from `/proc`              | `PROC-HIDDEN-PID`                                                          |
+| `fs-suid`           | Filesystem  | Dangerous unowned SUID/SGID privilege escalation binaries               | `FS-SUID-UNOWNED`                                                          |
+| `fs-tmp`            | Filesystem  | Executables and ELF binaries staged in `/tmp`, `/dev/shm`               | `FS-TMP-ELF`, `FS-TMP-EXEC`                                                |
 
 ---
 
 ## Configuration & Suppressing False Alarms
 
 To generate the configuration file:
+
 ```bash
 secscan --init-config
 ```
+
 This writes to `~/.config/secscan/config.json`.
 
 ### Example Configuration
@@ -357,7 +414,9 @@ flowchart TD
 To run `secscan` automatically in the background and log findings:
 
 ### 1. Create the Service File
+
 `/etc/systemd/system/secscan.service`:
+
 ```ini
 [Unit]
 Description=Secscan Security Audit
@@ -370,7 +429,9 @@ User=root
 ```
 
 ### 2. Create the Daily Timer
+
 `/etc/systemd/system/secscan.timer`:
+
 ```ini
 [Unit]
 Description=Daily Secscan Audit
@@ -384,6 +445,7 @@ WantedBy=timers.target
 ```
 
 ### 3. Enable and Monitor
+
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now secscan.timer
