@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"security-go-scanner/src/model"
+	"security-go-scanner/src/runner"
 	"security-go-scanner/src/terminal"
 )
 
@@ -20,6 +21,33 @@ const (
 	maxTextBytes      = 2 * 1024 * 1024
 	maxPerRulePerFile = 5
 )
+
+// PromptPasswordIfNeeded checks if Target is an encrypted ZIP archive and prompts
+// securely on the host TTY before any TUI takes over stdin.
+func PromptPasswordIfNeeded(opts *model.CodeScanOptions) {
+	if opts.Password != "" {
+		return
+	}
+	if envPw := os.Getenv("SECSCAN_ZIP_PASSWORD"); envPw != "" {
+		opts.Password = envPw
+		return
+	}
+	targetAbs, err := filepath.Abs(opts.Target)
+	if err != nil {
+		return
+	}
+	st, err := os.Stat(targetAbs)
+	if err != nil || st.IsDir() || !strings.EqualFold(filepath.Ext(targetAbs), ".zip") {
+		return
+	}
+	encrypted, err := IsZipFileEncrypted(targetAbs)
+	if err == nil && encrypted && terminal.IsTTY(os.Stdin) {
+		fmt.Printf("[?] Archive %s contains password-protected files.\n", filepath.Base(targetAbs))
+		if pw, err := terminal.ReadPassword("    Enter zip password: "); err == nil {
+			opts.Password = pw
+		}
+	}
+}
 
 // Scan executes a static malware-indicator scan on a target directory or ZIP archive.
 // By default it isolates the scan inside a read-only, network-disabled Docker container
@@ -37,22 +65,8 @@ func Scan(ctx context.Context, opts model.CodeScanOptions) (*model.CodeScanRepor
 
 	isZip := !st.IsDir() && strings.EqualFold(filepath.Ext(targetAbs), ".zip")
 
-	// Check for encrypted ZIP entries and prompt securely on the host TTY if needed.
+	PromptPasswordIfNeeded(&opts)
 	password := opts.Password
-	if password == "" {
-		password = os.Getenv("SECSCAN_ZIP_PASSWORD")
-	}
-
-	if isZip && password == "" {
-		encrypted, err := IsZipFileEncrypted(targetAbs)
-		if err == nil && encrypted && terminal.IsTTY(os.Stdin) {
-			fmt.Printf("[?] Archive %s contains password-protected files.\n", filepath.Base(targetAbs))
-			pw, err := terminal.ReadPassword("    Enter zip password: ")
-			if err == nil {
-				password = pw
-			}
-		}
-	}
 
 	if !opts.NoDocker {
 		return RunInDocker(ctx, targetAbs, isZip, password, opts.MinSeverity)
@@ -101,6 +115,13 @@ func ScanDirectory(root string, minSev model.Severity) (*model.CodeScanReport, e
 	var skipped []string
 	filesScanned := 0
 
+	type fileJob struct {
+		path string
+		rel  string
+		name string
+	}
+	var jobs []fileJob
+
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			if d != nil && d.IsDir() {
@@ -144,18 +165,42 @@ func ScanDirectory(root string, minSev model.Severity) (*model.CodeScanReport, e
 			return nil
 		}
 
-		raw, err := os.ReadFile(p)
-		if err != nil {
-			skipped = append(skipped, rel+" (unreadable)")
-			return nil
-		}
-
-		ScanFileContent(rel, d.Name(), raw, &findings)
+		jobs = append(jobs, fileJob{path: p, rel: rel, name: d.Name()})
 		return nil
 	})
 
 	if err != nil {
 		return nil, err
+	}
+
+	if len(jobs) > 0 {
+		type jobRes struct {
+			findings []model.CodeFinding
+			skipped  string
+		}
+		tasks := make([]runner.Task[jobRes], 0, len(jobs))
+		for _, jb := range jobs {
+			j := jb
+			tasks = append(tasks, runner.Task[jobRes]{
+				Name: j.rel,
+				Fn: func(_ context.Context) jobRes {
+					raw, rerr := os.ReadFile(j.path)
+					if rerr != nil {
+						return jobRes{skipped: j.rel + " (unreadable)"}
+					}
+					var localFindings []model.CodeFinding
+					ScanFileContent(j.rel, j.name, raw, &localFindings)
+					return jobRes{findings: localFindings}
+				},
+			})
+		}
+
+		for _, res := range runner.RunConcurrent(context.Background(), runner.SmartWorkers(0), tasks, nil, nil) {
+			if res.skipped != "" {
+				skipped = append(skipped, res.skipped)
+			}
+			findings = append(findings, res.findings...)
+		}
 	}
 
 	return BuildReport("secscan code-scan (native safe scan)", root, filesScanned, t0, findings, symlinks, skipped, minSev), nil
